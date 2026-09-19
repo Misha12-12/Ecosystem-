@@ -7,7 +7,8 @@
 - 🌱 **Plants** are the basis of the food chain and are constantly replenished.
 - 🐐 **Herbivores** are in packs, escape predators, and reproduce when energy levels are sufficient.
 - 🐅 **Hunters** are fast and aggressive, pursuing herbivores and omnivores.
-- 🕷 **Ambushers** are slow but powerful; they prefer to lie in wait. - 🦝 **Omnivores** — flexible: they eat both plants and other creatures; they flee from large predators.
+- 🕷 **Ambushers** are slow but powerful; they prefer to lie in wait.
+- 🦝 **Omnivores** — flexible: they eat both plants and other creatures; they flee from large predators.
 - 🦠 **Disease** — a random infection, transmitted through close contact, reduces speed and accelerates energy expenditure.
  
 ## ⚡ Key Mechanics
