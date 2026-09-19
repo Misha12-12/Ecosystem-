@@ -28,6 +28,7 @@
 
 All parameters are located in the CONFIG object—change them to explore different scenarios:
 
+```js
 const CONFIG = {
 spawnRate: 0.04, // plant spawn rate
 energyLoss: 0.12, // energy consumption per unit of time
@@ -47,6 +48,7 @@ diseaseSpreadDist: 35, // Disease transmission distance
 diseaseEnergyDrain: 0.3, // Additional energy expenditure for sick individuals
 diseaseSpeedMult: 0.6 // Speed multiplier for sick individuals (slowdown)
 };
+```
 
 # 🌿 Экосистема: Стаи, охота и болезни
 
@@ -99,3 +101,4 @@ const CONFIG = {
     diseaseEnergyDrain: 0.3,   // дополнительный расход энергии у больных
     diseaseSpeedMult: 0.6      // множитель скорости у больных (замедление)
 };
+```
