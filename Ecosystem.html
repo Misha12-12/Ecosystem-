@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Экосистема: Стаи, охота и болезни</title>
+<style>
+    body {
+        margin: 0; padding: 0; overflow: hidden;
+        background-color: #2a1a0a; font-family: Arial, sans-serif;
+        display: flex; justify-content: center; align-items: center; height: 100vh;
+    }
+    canvas { display: block; border: 3px solid #5a3a1a; border-radius: 6px;
+             box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+    #stats {
+        position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+        color: white; background: rgba(0,0,0,0.7); padding: 10px 20px;
+        border-radius: 5px; pointer-events: none; font-size: 14px;
+        display: flex; gap: 20px; white-space: nowrap; flex-wrap: wrap; max-width: 90%;
+    }
+    .stat-item { display: flex; align-items: center; gap: 5px; }
+    .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    #restart-btn {
+        position: absolute; top: 10px; right: 20px; padding: 10px 20px;
+        font-size: 14px; background: #5a3a1a; color: white;
+        border: 2px solid #8B4513; border-radius: 6px; cursor: pointer;
+        transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    #restart-btn:hover { background: #8B4513; border-color: #c08040; transform: scale(1.05); }
+</style>
+</head>
+<body>
+
+<div id="stats">
+    <div class="stat-item"><span class="stat-dot" style="background:#90EE90"></span> Трава: <span id="plant-count">0</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:#32CD32"></span> Травоядные: <span id="herb-count">0</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:#FF0000"></span> Охотники: <span id="hunter-count">0</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:#B4003C"></span> Засадники: <span id="ambush-count">0</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:#FFA500"></span> Всеядные: <span id="omni-count">0</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:#800080"></span> Больные: <span id="sick-count">0</span></div>
+</div>
+
+<button id="restart-btn">Перезапустить</button>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const FIELD_W = 900, FIELD_H = 1100;
+canvas.width = FIELD_W; canvas.height = FIELD_H;
+
+const CONFIG = {
+    spawnRate: 0.04, energyLoss: 0.12, eatValue: 30,
+    reproduceEnergy: 80, reproduceChance: 0.3, maxPopulation: 400,
+    hungerThreshold: 70, fleeDistance: 90, fleeSpeedBoost: 1.8,
+    flockRadius: 80, flockStrength: 0.03,
+    flockSeparation: 25, flockSeparationStrength: 0.08,
+    diseaseChance: 0.001, diseaseSpreadDist: 35,
+    diseaseEnergyDrain: 0.3, diseaseSpeedMult: 0.6
+};
+
+const COLORS = {
+    plant: '#90EE90', herbivore: '#32CD32',
+    hunter: '#FF0000', ambush: '#B4003C',
+    omnivore: '#FFA500', diseased: '#800080'
+};
+
+let creatures = [], plants = [];
+
+function createPlant() {
+    return { x: Math.random() * (FIELD_W - 12), y: Math.random() * (FIELD_H - 12), size: 12 };
+}
+
+function createCreature(type) {
+    const base = { x: Math.random()*(FIELD_W-15), y: Math.random()*(FIELD_H-15),
+                   angle: Math.random()*Math.PI*2, energy: 100, target: null,
+                   fleeing: false, diseased: false, age: 0 };
+    if (type === 'hunter')       return { ...base, type, size:14, speed:3.2, maxEnergy:100, color:COLORS.hunter, eats:['herbivore','omnivore'], fleesFrom:[] };
+    if (type === 'ambush')       return { ...base, type, size:20, speed:1.8, maxEnergy:140, color:COLORS.ambush, eats:['herbivore','omnivore'], fleesFrom:[] };
+    if (type === 'omnivore')     return { ...base, type, size:15, speed:2.4, maxEnergy:100, color:COLORS.omnivore, eats:['herbivore','omnivore','plant'], fleesFrom:['hunter','ambush'] };
+    return { ...base, type:'herbivore', size:15, speed:2.4, maxEnergy:100, color:COLORS.herbivore, eats:['plant'], fleesFrom:['hunter','ambush'] };
+}
+
+function initWorld() {
+    creatures = []; plants = [];
+    for (let i = 0; i < 90; i++) plants.push(createPlant());
+    for (let i = 0; i < 20; i++) creatures.push(createCreature('herbivore'));
+    for (let i = 0; i < 5;  i++) creatures.push(createCreature('hunter'));
+    for (let i = 0; i < 2;  i++) creatures.push(createCreature('ambush'));
+    for (let i = 0; i < 12; i++) creatures.push(createCreature('omnivore'));
+}
+
+document.getElementById('restart-btn').addEventListener('click', initWorld);
+initWorld();
+
+function lerpAngle(a, b, t) {
+    let diff = b - a;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return a + diff * t;
+}
+
+function findNearestThreat(e) {
+    let threat = null, minDist = Infinity;
+    for (let o of creatures) {
+        if (e.fleesFrom.includes(o.type)) {
+            let d = Math.hypot(e.x - o.x, e.y - o.y);
+            if (d < minDist) { minDist = d; threat = o; }
+        }
+    }
+    return { threat, dist: minDist };
+}
+
+function findClosestFood(e) {
+    let best = null, minDist = Infinity;
+    if (e.type === 'herbivore') {
+        for (let p of plants) {
+            let d = Math.hypot(e.x - p.x, e.y - p.y);
+            if (d < minDist) { minDist = d; best = p; }
+        }
+    } else if (e.type === 'hunter' || e.type === 'ambush') {
+        for (let o of creatures) {
+            if (e.eats.includes(o.type) && o !== e) {
+                let d = Math.hypot(e.x - o.x, e.y - o.y);
+                if (d < minDist) { minDist = d; best = o; }
+            }
+        }
+    } else if (e.type === 'omnivore') {
+        let meatB=null, plantB=null, mD=Infinity, pD=Infinity;
+        for (let o of creatures) {
+            if ((o.type==='herbivore'||o.type==='omnivore') && o!==e) {
+                let d = Math.hypot(e.x-o.x, e.y-o.y);
+                if (d<mD) { mD=d; meatB=o; }
+            }
+        }
+        for (let p of plants) {
+            let d = Math.hypot(e.x-p.x, e.y-p.y);
+            if (d<pD) { pD=d; plantB=p; }
+        }
+        if (meatB && (!plantB || mD < pD+80)) best = meatB;
+        else if (plantB) best = plantB;
+    }
+    return best;
+}
+
+function applyFlock(e) {
+    let cx=0, cy=0, sx=0, sy=0, ax=0, ay=0, count=0;
+    for (let o of creatures) {
+        if (o===e || o.type!==e.type) continue;
+        let d = Math.hypot(e.x-o.x, e.y-o.y);
+        if (d>0 && d<CONFIG.flockRadius) {
+            cx+=o.x; cy+=o.y; ax+=Math.cos(o.angle); ay+=Math.sin(o.angle); count++;
+            if (d<CONFIG.flockSeparation) { sx+=(e.x-o.x)/d; sy+=(e.y-o.y)/d; }
+        }
+    }
+    if (count>0) {
+        let cohesion = Math.atan2(cy/count-e.y, cx/count-e.x);
+        let align = Math.atan2(ay/count, ax/count);
+        e.angle = lerpAngle(e.angle, cohesion, CONFIG.flockStrength);
+        e.angle = lerpAngle(e.angle, align, CONFIG.flockStrength*0.5);
+        if (sx||sy) e.angle = lerpAngle(e.angle, Math.atan2(sy,sx), CONFIG.flockSeparationStrength);
+    }
+}
+
+function eat(eater, food) {
+    eater.energy = Math.min(eater.energy + CONFIG.eatValue, eater.maxEnergy);
+    if (food.size === 12 && !food.type) {
+        // Это растение
+        plants = plants.filter(p => p !== food);
+        plants.push(createPlant());
+    } else {
+        creatures = creatures.filter(c => c !== food);
+    }
+    if (creatures.length < CONFIG.maxPopulation) {
+        if (eater.energy >= CONFIG.reproduceEnergy && Math.random() < CONFIG.reproduceChance) {
+            eater.energy /= 2;
+            let baby = createCreature(eater.type);
+            baby.x = eater.x + (Math.random()-0.5)*20;
+            baby.y = eater.y + (Math.random()-0.5)*20;
+            creatures.push(baby);
+        }
+    }
+}
+
+function update() {
+    if (Math.random() < CONFIG.spawnRate) plants.push(createPlant());
+
+    for (let i = creatures.length - 1; i >= 0; i--) {
+        let e = creatures[i];
+        e.age++;
+        let drain = CONFIG.energyLoss + (e.diseased ? CONFIG.diseaseEnergyDrain : 0);
+        e.energy -= drain;
+        if (e.energy <= 0) { creatures.splice(i, 1); continue; }
+
+        // Болезни
+        if (!e.diseased && Math.random() < CONFIG.diseaseChance) e.diseased = true;
+        if (e.diseased) {
+            for (let o of creatures) {
+                if (o !== e && !o.diseased && o.type === e.type) {
+                    let d = Math.hypot(e.x-o.x, e.y-o.y);
+                    if (d < CONFIG.diseaseSpreadDist) o.diseased = true;
+                }
+            }
+        }
+
+        // Угроза
+        let { threat, dist } = findNearestThreat(e);
+        if (threat && dist < CONFIG.fleeDistance) {
+            e.fleeing = true; e.target = null;
+            e.angle = Math.atan2(e.y - threat.y, e.x - threat.x);
+        } else {
+            e.fleeing = false;
+            if (e.target) {
+                let d = Math.hypot(e.x-e.target.x, e.y-e.target.y);
+                if (d > 500) e.target = null;
+            }
+            if (!e.target || e.energy < CONFIG.hungerThreshold) e.target = findClosestFood(e);
+            if (e.target) {
+                let a = Math.atan2(e.target.y - e.y, e.target.x - e.x);
+                e.angle = lerpAngle(e.angle, a, 0.15);
+            } else if (e.type !== 'omnivore') {
+                applyFlock(e);
+            } else if (Math.random() < 0.02) {
+                e.angle += (Math.random()-0.5) * Math.PI;
+            }
+        }
+
+        let spd = e.speed;
+        if (e.fleeing) spd *= CONFIG.fleeSpeedBoost;
+        if (e.diseased) spd *= CONFIG.diseaseSpeedMult;
+
+        let nx = e.x + Math.cos(e.angle) * spd;
+        let ny = e.y + Math.sin(e.angle) * spd;
+        if (nx < 0) { nx=0; e.angle=Math.PI-e.angle; }
+        if (nx > FIELD_W-e.size) { nx=FIELD_W-e.size; e.angle=Math.PI-e.angle; }
+        if (ny < 0) { ny=0; e.angle=-e.angle; }
+        if (ny > FIELD_H-e.size) { ny=FIELD_H-e.size; e.angle=-e.angle; }
+        e.x = nx; e.y = ny;
+
+        if (e.target && !e.fleeing) {
+            let d = Math.hypot(e.x-e.target.x, e.y-e.target.y);
+            if (d < (e.size + (e.target.size||12)) / 2) {
+                eat(e, e.target);
+                e.target = null;
+            }
+        }
+    }
+}
+
+function draw() {
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+
+    // Растения — круги
+    ctx.fillStyle = COLORS.plant;
+    for (let p of plants) {
+        ctx.beginPath();
+        ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size/2, 0, Math.PI*2);
+        ctx.fill();
+    }
+
+    for (let e of creatures) {
+        let cx = e.x + e.size/2, cy = e.y + e.size/2, r = e.size/2;
+
+        // Тело — круг
+        ctx.fillStyle = e.color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI*2);
+        ctx.fill();
+
+        // Глаза
+        let ex = Math.cos(e.angle)*r*0.6, ey = Math.sin(e.angle)*r*0.6;
+        let px = -Math.sin(e.angle)*r*0.4, py = Math.cos(e.angle)*r*0.4;
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(cx+ex+px, cy+ey+py, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx+ex-px, cy+ey-py, 2, 0, Math.PI*2); ctx.fill();
+
+        // Направление
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(e.angle)*r*1.2, cy + Math.sin(e.angle)*r*1.2);
+        ctx.strokeStyle = e.fleeing ? 'yellow' : 'white';
+        ctx.lineWidth = e.fleeing ? 3 : 1.5;
+        ctx.stroke();
+
+        // Полоска энергии
+        ctx.fillStyle = 'black';
+        ctx.fillRect(e.x, e.y-10, e.size, 3);
+        let ratio = Math.max(0, e.energy/e.maxEnergy);
+        ctx.fillStyle = ratio > 0.6 ? 'lime' : (ratio > 0.3 ? 'orange' : 'red');
+        ctx.fillRect(e.x, e.y-10, e.size * ratio, 3);
+
+        // Болезнь — фиолетовый ободок
+        if (e.diseased) {
+            ctx.strokeStyle = COLORS.diseased;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r+2, 0, Math.PI*2);
+            ctx.stroke();
+        }
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+
+    let herbC = creatures.filter(e => e.type==='herbivore').length;
+    let huntC = creatures.filter(e => e.type==='hunter').length;
+    let ambC  = creatures.filter(e => e.type==='ambush').length;
+    let omniC = creatures.filter(e => e.type==='omnivore').length;
+    let sickC = creatures.filter(e => e.diseased).length;
+
+    document.getElementById('plant-count').innerText = plants.length;
+    document.getElementById('herb-count').innerText = herbC;
+    document.getElementById('hunter-count').innerText = huntC;
+    document.getElementById('ambush-count').innerText = ambC;
+    document.getElementById('omni-count').innerText = omniC;
+    document.getElementById('sick-count').innerText = sickC;
+
+    requestAnimationFrame(gameLoop);
+}
+gameLoop();
+</script>
+</body>
+</html>
