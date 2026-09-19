@@ -47,7 +47,7 @@ diseaseChance: 0.001, // Chance of random infection
 diseaseSpreadDist: 35, // Disease transmission distance
 diseaseEnergyDrain: 0.3, // Additional energy expenditure for sick individuals
 diseaseSpeedMult: 0.6 // Speed multiplier for sick individuals (slowdown)
-};```
+};
 
 # 🌿 Экосистема: Стаи, охота и болезни
 
